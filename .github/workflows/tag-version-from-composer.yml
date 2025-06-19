@@ -1,0 +1,43 @@
+name: Tag from Composer Version
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  tag-version:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Fetch tags from remote
+        run: git fetch --tags
+
+      - name: Read version from composer.json
+        id: version
+        run: |
+          VERSION=$(jq -r .version composer.json)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create or Recreate Git tag
+        run: |
+          VERSION="v${{ steps.version.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Check if tag exists remotely
+          if git ls-remote --tags origin | grep -q "refs/tags/$VERSION"; then
+            echo "⚠️ Tag $VERSION already exists. Deleting it..."
+            git push origin ":refs/tags/$VERSION"
+            git tag -d "$VERSION" || true
+          fi
+
+          git tag -a "$VERSION" -m "Version $VERSION"
+          git push origin "$VERSION"
+          echo "🚀 Tag $VERSION created and pushed."
