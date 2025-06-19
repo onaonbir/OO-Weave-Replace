@@ -2,8 +2,6 @@
 
 namespace OnaOnbir\OOWeaveReplace\Core;
 
-use OnaOnbir\OOWeaveReplace\Core;
-
 class DataProcessor
 {
     public static function extractContext(mixed $model, array $filterableColumns): array

@@ -21,7 +21,6 @@ class OOWeaveReplaceServiceProvider extends ServiceProvider
         $this->registerFunctionRegisters();
     }
 
-
     private function registerFunctionRegisters(): void
     {
 

@@ -2,9 +2,6 @@
 
 namespace OnaOnbir\OOWeaveReplace\Core;
 
-
-use OnaOnbir\OOWeaveReplace\Core;
-
 class Rule
 {
     protected array $rules = [];

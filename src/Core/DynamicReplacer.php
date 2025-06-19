@@ -70,7 +70,7 @@ class DynamicReplacer
             $inner = self::replace($inner, $context);
         }
 
-        return self::applyFunction($function, $inner, $options ??[]);
+        return self::applyFunction($function, $inner, $options ?? []);
     }
 
     protected static function buildFunctionRegex(array $config): string
