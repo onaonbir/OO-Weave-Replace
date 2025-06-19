@@ -1,6 +1,6 @@
 <?php
 
-namespace OnaOnbir\OOWeaveReplace\Core\Filterable\Support;
+namespace OnaOnbir\OOWeaveReplace\Filterable\Support;
 
 class FilterableColumnNormalizer
 {

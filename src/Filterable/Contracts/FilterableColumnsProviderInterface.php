@@ -1,6 +1,6 @@
 <?php
 
-namespace OnaOnbir\OOWeaveReplace\Core\Filterable\Contracts;
+namespace OnaOnbir\OOWeaveReplace\Filterable\Contracts;
 
 interface FilterableColumnsProviderInterface
 {
