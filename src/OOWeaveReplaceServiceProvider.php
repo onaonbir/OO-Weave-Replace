@@ -2,6 +2,7 @@
 
 namespace OnaOnbir\OOWeaveReplace;
 
+use Exception;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
