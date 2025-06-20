@@ -41,6 +41,7 @@ class DynamicReplacer
         // Önce tüm değişkenleri çöz (sadece mixed template'ler için)
         $template = preg_replace_callback($varRegex, function ($matches) use ($context) {
             $resolved = self::resolveRaw(trim($matches[1]), $context);
+
             return is_array($resolved) ? json_encode($resolved, JSON_UNESCAPED_UNICODE) : $resolved;
         }, $template);
 
@@ -88,8 +89,9 @@ class DynamicReplacer
             if (is_array($result)) {
                 // Array'leri re-index et (array_filter sonrası için)
                 $result = array_values($result);
+
                 // Array'i özel bir işaretleyici ile wrap et
-                return '___ARRAY_PLACEHOLDER___' . base64_encode(serialize($result)) . '___END_ARRAY___';
+                return '___ARRAY_PLACEHOLDER___'.base64_encode(serialize($result)).'___END_ARRAY___';
             }
 
             return $result;
@@ -142,11 +144,12 @@ class DynamicReplacer
         }
 
         $trimmed = trim($str);
-        if (!in_array($trimmed[0], ['[', '{'])) {
+        if (! in_array($trimmed[0], ['[', '{'])) {
             return false;
         }
 
         json_decode($trimmed);
+
         return json_last_error() === JSON_ERROR_NONE;
     }
 
