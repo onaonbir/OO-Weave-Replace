@@ -62,18 +62,38 @@ class OOWeaveReplaceServiceProvider extends ServiceProvider
             }
         });
 
-        FunctionRegistry::register('pipe', function ($value, $options) {
-            $functions = $options['functions'] ?? [];
-            $result = $value;
+        FunctionRegistry::register('func_pipe', function ($data, $options) {
 
-            foreach ($functions as $func) {
-                $result = FunctionRegistry::call($func, $result, $options);
+
+            if (!isset($options['functions']) || !is_array($options['functions'])) {
+
+                return $data;
             }
+
+            $result = $data;
+
+            foreach ($options['functions'] as $functionName) {
+                if (!isset($options[$functionName])) {
+                    continue;
+                }
+
+                $functionOptions = $options[$functionName];
+
+                // FunctionRegistry üzerinden fonksiyonu çağır
+                $result = FunctionRegistry::call(
+                    $functionName,
+                    $result,
+                    $functionOptions
+                );
+            }
+
+
 
             return $result;
         });
 
         // STRING FUNCTIONS
+        FunctionRegistry::register('to_array', fn ($value) => json_decode($value));
         FunctionRegistry::register('upper', fn ($value) => strtoupper($value));
         FunctionRegistry::register('lower', fn ($value) => strtolower($value));
         FunctionRegistry::register('title', fn ($value) => ucwords($value));
@@ -111,35 +131,120 @@ class OOWeaveReplaceServiceProvider extends ServiceProvider
 
             return $sorted;
         });
-        FunctionRegistry::register('filter', function ($value, $options) {
-            if (! is_array($value)) {
+        FunctionRegistry::register('filter_pluck', function ($value, $options = []) {
+            if (!is_array($value)) {
                 return [];
             }
-            $key = $options['key'] ?? null;
+
+            // Ayıklama (filter) için seçenekler
+            $filterKey = $options['filter_key'] ?? null;
             $operator = $options['operator'] ?? '=';
             $filterValue = $options['value'] ?? null;
 
-            return array_filter($value, function ($item) use ($key, $operator, $filterValue) {
-                $itemValue = is_array($item) && $key ? ($item[$key] ?? null) : $item;
+            // Filtreleme işlemi
+            $filtered = array_filter($value, function ($item) use ($filterKey, $operator, $filterValue) {
+                $itemValue = is_array($item) && $filterKey ? ($item[$filterKey] ?? null) : $item;
 
                 return match ($operator) {
                     '=' => $itemValue == $filterValue,
                     '!=' => $itemValue != $filterValue,
                     '>' => $itemValue > $filterValue,
                     '<' => $itemValue < $filterValue,
-                    'in' => in_array($itemValue, (array) $filterValue),
-                    'contains' => str_contains($itemValue, $filterValue),
+                    '>=' => $itemValue >= $filterValue,
+                    '<=' => $itemValue <= $filterValue,
+                    'in' => in_array($itemValue, (array)$filterValue),
+                    'not_in' => !in_array($itemValue, (array)$filterValue),
+                    'contains' => str_contains((string)$itemValue, (string)$filterValue),
+                    'starts_with' => str_starts_with((string)$itemValue, (string)$filterValue),
+                    'ends_with' => str_ends_with((string)$itemValue, (string)$filterValue),
+                    'empty' => empty($itemValue),
+                    'not_empty' => !empty($itemValue),
                     default => true
                 };
             });
+
+            $filtered = array_values($filtered);
+
+            // Pluck işlemi
+            $pluckKey = $options['pluck_key'] ?? $options['key'] ?? $options['column'] ?? $options['field'] ?? null;
+
+            if (!$pluckKey) {
+                return $filtered;
+            }
+
+            return array_column($filtered, $pluckKey);
         });
-        FunctionRegistry::register('pluck', function ($value, $options) {
+        FunctionRegistry::register('filter', function ($value, $options = []) {
             if (! is_array($value)) {
                 return [];
             }
-            $key = $options['key'] ?? 'name';
+
+            $key = $options['key'] ?? null;
+            $operator = $options['operator'] ?? '=';
+            $filterValue = $options['value'] ?? null;
+
+            $filtered = array_filter($value, function ($item) use ($key, $operator, $filterValue) {
+                // Eğer item array ise ve key belirtilmişse
+                if (is_array($item) && $key) {
+                    $itemValue = $item[$key] ?? null;
+                } else {
+                    $itemValue = $item;
+                }
+
+                return match ($operator) {
+                    '=' => $itemValue == $filterValue,
+                    '!=' => $itemValue != $filterValue,
+                    '>' => $itemValue > $filterValue,
+                    '<' => $itemValue < $filterValue,
+                    '>=' => $itemValue >= $filterValue,
+                    '<=' => $itemValue <= $filterValue,
+                    'in' => in_array($itemValue, (array) $filterValue),
+                    'not_in' => !in_array($itemValue, (array) $filterValue),
+                    'contains' => str_contains((string)$itemValue, (string)$filterValue),
+                    'starts_with' => str_starts_with((string)$itemValue, (string)$filterValue),
+                    'ends_with' => str_ends_with((string)$itemValue, (string)$filterValue),
+                    'empty' => empty($itemValue),
+                    'not_empty' => !empty($itemValue),
+                    default => true
+                };
+            });
+
+            // Array indekslerini yeniden düzenle
+            return array_values($filtered);
+        });
+        FunctionRegistry::register('pluck', function ($value, $options = []) {
+            if (!is_array($value)) {
+                return [];
+            }
+
+            // String olarak key geçilmişse
+            if (is_string($options)) {
+                return array_column($value, $options);
+            }
+
+            // Array olarak options geçilmişse
+            $key = $options['key'] ?? $options['column'] ?? $options['field'] ?? null;
+
+            if (!$key) {
+                return $value;
+            }
 
             return array_column($value, $key);
+        });
+
+        FunctionRegistry::register('map', function ($value, $options = []) {
+            if (!is_array($value)) {
+                return $value;
+            }
+
+            $key = $options['key'] ?? $options['field'] ?? null;
+
+            // Sadece belirli key'i al (pluck benzeri)
+            if ($key) {
+                return array_column($value, $key);
+            }
+
+            return $value;
         });
         FunctionRegistry::register('chunk', function ($value, $options) {
             if (! is_array($value)) {
@@ -338,15 +443,14 @@ class OOWeaveReplaceServiceProvider extends ServiceProvider
         });
 
         // DEBUG FUNCTIONS
-        FunctionRegistry::register('debug', function ($value, $options) {
-            $format = $options['format'] ?? 'json';
+        FunctionRegistry::register('dump', function ($value, $options = []) {
+            $label = $options['label'] ?? 'DEBUG';
 
-            return match ($format) {
-                'json' => json_encode($value, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE),
-                'var_dump' => print_r($value, true),
-                'type' => gettype($value),
-                default => (string) $value
-            };
+            error_log("=== {$label} ===");
+            error_log(print_r($value, true));
+            error_log("=== /{$label} ===");
+
+            return $value; // Passthrough
         });
 
     }
