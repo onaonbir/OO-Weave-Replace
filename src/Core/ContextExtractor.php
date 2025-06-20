@@ -87,17 +87,19 @@ class ContextExtractor
         $result = [];
 
         foreach ($columns as $column) {
-            if (!$column) continue;
+            if (! $column) {
+                continue;
+            }
 
-            $label = trim($prefixLabel . ($column['label'] ?? $column['columnKey']));
-            $columnKey = trim($prefixKey . ($column['columnKey'] ?? ''));
+            $label = trim($prefixLabel.($column['label'] ?? $column['columnKey']));
+            $columnKey = trim($prefixKey.($column['columnKey'] ?? ''));
 
             if (isset($column['inner']) && is_array($column['inner'])) {
                 if ($column['columnType'] === 'relation_hasMany') {
                     $columnKey .= '.*';
                 }
 
-                $result = array_merge($result, self::flattenFilterableColumnsKeyValue($column['inner'], $label . ' › ', $columnKey . '.'));
+                $result = array_merge($result, self::flattenFilterableColumnsKeyValue($column['inner'], $label.' › ', $columnKey.'.'));
             } else {
                 $result[] = [
                     'label' => $label,
