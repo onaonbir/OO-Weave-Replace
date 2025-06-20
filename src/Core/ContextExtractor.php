@@ -81,4 +81,31 @@ class ContextExtractor
 
         return $results;
     }
+
+    public static function flattenFilterableColumnsKeyValue(array $columns, string $prefixLabel = '', string $prefixKey = ''): array
+    {
+        $result = [];
+
+        foreach ($columns as $column) {
+            if (!$column) continue;
+
+            $label = trim($prefixLabel . ($column['label'] ?? $column['columnKey']));
+            $columnKey = trim($prefixKey . ($column['columnKey'] ?? ''));
+
+            if (isset($column['inner']) && is_array($column['inner'])) {
+                if ($column['columnType'] === 'relation_hasMany') {
+                    $columnKey .= '.*';
+                }
+
+                $result = array_merge($result, self::flattenFilterableColumnsKeyValue($column['inner'], $label . ' › ', $columnKey . '.'));
+            } else {
+                $result[] = [
+                    'label' => $label,
+                    'value' => rtrim($columnKey, '.'),
+                ];
+            }
+        }
+
+        return $result;
+    }
 }
