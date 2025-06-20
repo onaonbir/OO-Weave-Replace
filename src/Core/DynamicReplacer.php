@@ -10,7 +10,6 @@ class DynamicReplacer
     public static function replace(mixed $template, array $context): mixed
     {
         if (is_array($template)) {
-            // "Only variables should be passed by reference" hatası için bu kısmı güvenceye alıyoruz.
             return array_map(function ($item) use ($context) {
                 return self::replace($item, $context);
             }, $template);
@@ -34,28 +33,67 @@ class DynamicReplacer
             return self::executeFunction($fullMatch, $context);
         }
 
-        // RECURSIVE @@function(...)@@ çözümü
-        do {
-            $lastTemplate = $template;
-            $template = preg_replace_callback($funcRegex, function ($matches) use ($context) {
-                $result = self::executeFunction($matches, $context);
-
-                // String context içinde array'i JSON olarak encode et
-                return is_array($result) ? json_encode($result, JSON_UNESCAPED_UNICODE) : $result;
-            }, $template);
-        } while ($template !== $lastTemplate);
-
+        // Tek değişken kontrolü - function işlemlerinden ÖNCE kontrol et
         if (preg_match($varExactRegex, $template, $singleMatch)) {
             return self::resolveRaw(trim($singleMatch[1]), $context);
         }
 
+        // Önce tüm değişkenleri çöz (sadece mixed template'ler için)
         $template = preg_replace_callback($varRegex, function ($matches) use ($context) {
             $resolved = self::resolveRaw(trim($matches[1]), $context);
-
             return is_array($resolved) ? json_encode($resolved, JSON_UNESCAPED_UNICODE) : $resolved;
         }, $template);
 
+        // Sonra function çağrılarını en içten dışa doğru çöz
+        $maxIterations = 10; // Sonsuz döngü koruması
+        $iteration = 0;
+
+        do {
+            $lastTemplate = $template;
+            $template = self::processInnerMostFunctions($template, $context, $placeholders);
+            $iteration++;
+        } while ($template !== $lastTemplate && $iteration < $maxIterations);
+
+        // Tek değişken kontrolü - function işlemlerinden sonra tekrar kontrol et
+        if (preg_match($varExactRegex, $template, $singleMatch)) {
+            return self::resolveRaw(trim($singleMatch[1]), $context);
+        }
+
+        // Eğer template tamamı JSON string ise ve bu bir array ise, array olarak döndür
+        if (self::isJsonString($template)) {
+            $decoded = json_decode($template, true);
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+        }
+
         return $template;
+    }
+
+    /**
+     * En içteki (nested olmayan) function çağrılarını bulur ve işler
+     */
+    protected static function processInnerMostFunctions(string $template, array $context, array $placeholders): string
+    {
+        $start = preg_quote($placeholders['function']['start'], '/');
+        $end = preg_quote($placeholders['function']['end'], '/');
+
+        // En içteki function'ları yakala - içinde başka function start bulunmayan
+        $pattern = "/{$start}(\w+)\(([^{$start}]+?)(?:,\s*(\{[^}]*\}))?\){$end}/";
+
+        return preg_replace_callback($pattern, function ($matches) use ($context) {
+            $result = self::executeFunction($matches, $context);
+
+            // Sonucu string context'e uygun formatta döndür
+            if (is_array($result)) {
+                // Array'leri re-index et (array_filter sonrası için)
+                $result = array_values($result);
+                // Array'i özel bir işaretleyici ile wrap et
+                return '___ARRAY_PLACEHOLDER___' . base64_encode(serialize($result)) . '___END_ARRAY___';
+            }
+
+            return $result;
+        }, $template);
     }
 
     protected static function executeFunction(array $matches, array $context): mixed
@@ -64,13 +102,52 @@ class DynamicReplacer
         $inner = trim($matches[2]);
         $options = isset($matches[3]) ? json_decode($matches[3], true) : [];
 
-        if (preg_match('/^\{\{(.*?)\}\}$/', $inner, $innerMatch)) {
-            $inner = self::resolveRaw(trim($innerMatch[1]), $context);
+        // Array placeholder kontrolü - nested function sonuçları için
+        if (str_contains($inner, '___ARRAY_PLACEHOLDER___')) {
+            $inner = self::restoreArrayPlaceholders($inner);
+        } elseif (self::isJsonString($inner)) {
+            // JSON string mi kontrol et
+            $inner = json_decode($inner, true);
         } else {
+            // Normal string olarak işle
             $inner = self::replace($inner, $context);
         }
 
         return self::applyFunction($function, $inner, $options ?? []);
+    }
+
+    /**
+     * Array placeholder'ları gerçek array'lere çevirir
+     */
+    protected static function restoreArrayPlaceholders(string $input): mixed
+    {
+        // Tek bir array placeholder'ı mı kontrol et
+        if (preg_match('/^___ARRAY_PLACEHOLDER___(.+?)___END_ARRAY___$/', $input, $matches)) {
+            return unserialize(base64_decode($matches[1]));
+        }
+
+        // Multiple placeholder'lar varsa bunları da handle et
+        return preg_replace_callback('/___ARRAY_PLACEHOLDER___(.+?)___END_ARRAY___/', function ($matches) {
+            return json_encode(unserialize(base64_decode($matches[1])), JSON_UNESCAPED_UNICODE);
+        }, $input);
+    }
+
+    /**
+     * Bir string'in geçerli JSON olup olmadığını kontrol eder
+     */
+    protected static function isJsonString(string $str): bool
+    {
+        if (empty($str)) {
+            return false;
+        }
+
+        $trimmed = trim($str);
+        if (!in_array($trimmed[0], ['[', '{'])) {
+            return false;
+        }
+
+        json_decode($trimmed);
+        return json_last_error() === JSON_ERROR_NONE;
     }
 
     protected static function buildFunctionRegex(array $config): string
@@ -112,12 +189,6 @@ class DynamicReplacer
 
     /**
      * Joker karakter içeren bir yolu context içinde arar ve eşleşen değerleri döndürür.
-     * Bu fonksiyon, verilen wildcardPath'e uyan tüm düzleştirilmiş anahtarları toplar
-     * ve bunları, wildcard'ın bittiği yerdeki alt dizileri veya değerleri içerecek şekilde yeniden yapılandırır.
-     *
-     * @param  string  $wildcardPath  Örneğin: 'r_causer.r_managers.*.additional_emails' veya 'r_users.*.name'
-     * @param  array  $context  Düzleştirilmiş bağlam verisi
-     * @return array Çözümlenmiş değerlerin bir dizisi
      */
     protected static function resolveWildcardGroup(string $wildcardPath, array $context): array
     {
@@ -131,31 +202,26 @@ class DynamicReplacer
         }
 
         // Ana wildcard yolunu oluştur (örn: 'r_causer.r_managers.*' veya 'r_users.*')
-        // Bu kısım, her bir * eşleşmesinin benzersiz bir "grup anahtarı" oluşturmasını sağlayacak.
         $baseWildcardPath = implode('.', $pathParts);
 
-        // Regex pattern'ini oluştur. $baseWildcardPath ile başlayan ve ardından kalan kısmı yakalayan bir pattern.
-        // DÜZELTME: Çoklu wildcard desteklemek için [^.]+ kullan
+        // Regex pattern'ini oluştur
         $regexBasePattern = '/^'.str_replace('\*', '([^.]+)', preg_quote($baseWildcardPath, '/')).'\.(.*)$/';
 
         $groupedMatches = [];
 
         foreach ($context as $flatKey => $value) {
             if (preg_match($regexBasePattern, $flatKey, $matches)) {
-                $matchIdxOffset = count($pathParts) - substr_count($baseWildcardPath, '*'); // Kaç * olduğunu say
-
                 // Her bir * tarafından yakalanan değerleri al
                 $wildcardValues = [];
                 for ($i = 1; $i <= substr_count($baseWildcardPath, '*'); $i++) {
                     $wildcardValues[] = $matches[$i];
                 }
 
-                // Bu, 'r_causer.r_managers.0' gibi bir benzersiz grup anahtarı oluşturacak
+                // Benzersiz grup anahtarı oluştur
                 $groupKey = str_replace(array_fill(0, count($wildcardValues), '*'), $wildcardValues, $baseWildcardPath);
 
-                // remainingFlatKey: baseWildcardPath'ten sonra düzleştirilmiş anahtarda kalan kısım
-                // Örnek: 'additional_emails.0.name'
-                $remainingFlatKey = $matches[count($matches) - 1]; // Son yakalama grubu
+                // Kalan düzleştirilmiş anahtar
+                $remainingFlatKey = $matches[count($matches) - 1];
 
                 if (! isset($groupedMatches[$groupKey])) {
                     $groupedMatches[$groupKey] = [];
@@ -167,33 +233,20 @@ class DynamicReplacer
         foreach ($groupedMatches as $groupKey => $groupData) {
             $undottedGroupData = Arr::undot($groupData);
 
-            // Eğer hedefimiz doğrudan bir properti ise (örn: 'name' için {{r_users.*.name}})
+            // Hedef property kontrolü
             if ($targetProperty && ! str_contains($wildcardPath, $targetProperty.'.*')) {
-                // Eğer undottedGroupData içinde direkt targetProperty varsa ve değeri bir dizi değilse
                 if (isset($undottedGroupData[$targetProperty]) && ! is_array($undottedGroupData[$targetProperty])) {
                     $resolvedValues[] = $undottedGroupData[$targetProperty];
                 } elseif (isset($undottedGroupData[$targetProperty]) && is_array($undottedGroupData[$targetProperty])) {
-                    // Eğer hedef properti bir dizi ise (additional_emails gibi), o diziyi al.
-                    // Bu durumda undottedGroupData içinde additional_emails'ın kendisi de bir dizi olacaktır.
-                    // Ve bazen bu dizinin içinde 0, 1 gibi anahtarlar olabilir.
                     $resolvedValues[] = array_values($undottedGroupData[$targetProperty]);
                 } else {
-                    // Eğer targetProperty yoksa veya beklenmedik bir durumsa, tüm grubu ekleyelim.
                     $resolvedValues[] = $undottedGroupData;
                 }
             } else {
-                // Eğer wildcardPath'in sonu da bir joker karakter içeriyorsa
-                // (örn: {{r_causer.r_managers.*.additional_emails.*}})
-                // veya {{r_causer.r_managers.*.additional_emails}} gibi bir liste hedefliyorsak,
-                // undot edilmiş veriyi doğrudan eklemeliyiz.
-                // Bu durumda undottedGroupData'nın kendisi, istediğimiz listeyi içerecektir.
-                // Örneğin: [{"name":"test",...}]
                 if (is_array($undottedGroupData)) {
-                    // Eğer en dışta bir sayısal anahtar varsa (0, 1 gibi), doğrudan değerlerini al.
-                    if (array_is_list($undottedGroupData)) { // PHP 8.1+
+                    if (array_is_list($undottedGroupData)) {
                         $resolvedValues[] = $undottedGroupData;
                     } else {
-                        // Eğer PHP 8.1 öncesi veya liste değilse, değerlerini alıp liste yap.
                         $resolvedValues[] = array_values($undottedGroupData);
                     }
                 } else {
@@ -202,10 +255,10 @@ class DynamicReplacer
             }
         }
 
+        // Flatten işlemi
         $flattened = [];
         foreach ($resolvedValues as $value) {
             if (is_array($value) && ! empty($value) && is_array(reset($value))) {
-                // Eğer içiçe array ise flatten et
                 $flattened = array_merge($flattened, $value);
             } else {
                 $flattened[] = $value;
