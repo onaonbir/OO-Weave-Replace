@@ -64,8 +64,7 @@ class OOWeaveReplaceServiceProvider extends ServiceProvider
 
         FunctionRegistry::register('func_pipe', function ($data, $options) {
 
-
-            if (!isset($options['functions']) || !is_array($options['functions'])) {
+            if (! isset($options['functions']) || ! is_array($options['functions'])) {
 
                 return $data;
             }
@@ -73,7 +72,7 @@ class OOWeaveReplaceServiceProvider extends ServiceProvider
             $result = $data;
 
             foreach ($options['functions'] as $functionName) {
-                if (!isset($options[$functionName])) {
+                if (! isset($options[$functionName])) {
                     continue;
                 }
 
@@ -86,8 +85,6 @@ class OOWeaveReplaceServiceProvider extends ServiceProvider
                     $functionOptions
                 );
             }
-
-
 
             return $result;
         });
@@ -132,7 +129,7 @@ class OOWeaveReplaceServiceProvider extends ServiceProvider
             return $sorted;
         });
         FunctionRegistry::register('filter_pluck', function ($value, $options = []) {
-            if (!is_array($value)) {
+            if (! is_array($value)) {
                 return [];
             }
 
@@ -152,13 +149,13 @@ class OOWeaveReplaceServiceProvider extends ServiceProvider
                     '<' => $itemValue < $filterValue,
                     '>=' => $itemValue >= $filterValue,
                     '<=' => $itemValue <= $filterValue,
-                    'in' => in_array($itemValue, (array)$filterValue),
-                    'not_in' => !in_array($itemValue, (array)$filterValue),
-                    'contains' => str_contains((string)$itemValue, (string)$filterValue),
-                    'starts_with' => str_starts_with((string)$itemValue, (string)$filterValue),
-                    'ends_with' => str_ends_with((string)$itemValue, (string)$filterValue),
+                    'in' => in_array($itemValue, (array) $filterValue),
+                    'not_in' => ! in_array($itemValue, (array) $filterValue),
+                    'contains' => str_contains((string) $itemValue, (string) $filterValue),
+                    'starts_with' => str_starts_with((string) $itemValue, (string) $filterValue),
+                    'ends_with' => str_ends_with((string) $itemValue, (string) $filterValue),
                     'empty' => empty($itemValue),
-                    'not_empty' => !empty($itemValue),
+                    'not_empty' => ! empty($itemValue),
                     default => true
                 };
             });
@@ -168,7 +165,7 @@ class OOWeaveReplaceServiceProvider extends ServiceProvider
             // Pluck işlemi
             $pluckKey = $options['pluck_key'] ?? $options['key'] ?? $options['column'] ?? $options['field'] ?? null;
 
-            if (!$pluckKey) {
+            if (! $pluckKey) {
                 return $filtered;
             }
 
@@ -199,12 +196,12 @@ class OOWeaveReplaceServiceProvider extends ServiceProvider
                     '>=' => $itemValue >= $filterValue,
                     '<=' => $itemValue <= $filterValue,
                     'in' => in_array($itemValue, (array) $filterValue),
-                    'not_in' => !in_array($itemValue, (array) $filterValue),
-                    'contains' => str_contains((string)$itemValue, (string)$filterValue),
-                    'starts_with' => str_starts_with((string)$itemValue, (string)$filterValue),
-                    'ends_with' => str_ends_with((string)$itemValue, (string)$filterValue),
+                    'not_in' => ! in_array($itemValue, (array) $filterValue),
+                    'contains' => str_contains((string) $itemValue, (string) $filterValue),
+                    'starts_with' => str_starts_with((string) $itemValue, (string) $filterValue),
+                    'ends_with' => str_ends_with((string) $itemValue, (string) $filterValue),
                     'empty' => empty($itemValue),
-                    'not_empty' => !empty($itemValue),
+                    'not_empty' => ! empty($itemValue),
                     default => true
                 };
             });
@@ -213,7 +210,7 @@ class OOWeaveReplaceServiceProvider extends ServiceProvider
             return array_values($filtered);
         });
         FunctionRegistry::register('pluck', function ($value, $options = []) {
-            if (!is_array($value)) {
+            if (! is_array($value)) {
                 return [];
             }
 
@@ -225,7 +222,7 @@ class OOWeaveReplaceServiceProvider extends ServiceProvider
             // Array olarak options geçilmişse
             $key = $options['key'] ?? $options['column'] ?? $options['field'] ?? null;
 
-            if (!$key) {
+            if (! $key) {
                 return $value;
             }
 
@@ -233,7 +230,7 @@ class OOWeaveReplaceServiceProvider extends ServiceProvider
         });
 
         FunctionRegistry::register('map', function ($value, $options = []) {
-            if (!is_array($value)) {
+            if (! is_array($value)) {
                 return $value;
             }
 
