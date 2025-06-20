@@ -1,6 +1,6 @@
 <?php
 
-namespace OnaOnbir\OOAutoWeave\Core\Data;
+namespace OnaOnbir\OOWeaveReplace\Core;
 
 use Illuminate\Support\Arr;
 
